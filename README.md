@@ -337,9 +337,7 @@ DB_SSL_CA = "certs/ca.pem"
 [![GitHub](https://img.shields.io/badge/GitHub-abhi--1009-181717?style=flat&logo=github)](https://github.com/abhi-1009)
 [![Live App](https://img.shields.io/badge/Live_App-Tennis_Rankings_Explorer-FF4B4B?style=flat&logo=streamlit&logoColor=white)](https://tennis-rankings-explorer-stjtrxsnyclfiewespoedo.streamlit.app/)
 
-<!-- Add your LinkedIn here, for example:
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/abhijit-sinha-053b159a)
--->
 
 ⭐ If you found this project useful, please star the repository.
 
