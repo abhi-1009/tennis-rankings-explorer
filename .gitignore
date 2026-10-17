@@ -1,0 +1,14 @@
+# secrets and local settings: never commit these
+.env
+.env.local
+.streamlit/secrets.toml
+
+# python / tooling
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# downloaded API data (recreated by python -m api.extract)
+data/raw/*
+!data/raw/.gitkeep
