@@ -12,3 +12,4 @@ __pycache__/
 # downloaded API data (recreated by python -m api.extract)
 data/raw/*
 !data/raw/.gitkeep
+.pytest_cache/

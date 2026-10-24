@@ -48,11 +48,11 @@ Sports data arrives as deeply nested JSON that is hard to search, compare or reu
 
 ## ✨ Dashboard pages
 
-The app uses a **top navigation bar** (no sidebar), a dark court-themed design, glass cards and animated KPIs.
+The app uses a **top navigation bar** (no sidebar), a dark court-themed design, glass cards and animated KPIs. Every chart has a one-line **takeaway** calculated from the data.
 
 | Page | What you can do |
 |---|---|
-| 🏠 **Introduction** | Project story, problem statement, business use cases, pipeline, live dataset counts |
+| 🏠 **Introduction** | Project story, problem statement, stakeholders and key result, **assumptions, limits and biases**, business use cases, pipeline, live dataset counts |
 | 📊 **Overview** | KPI cards, top countries, competitions per category, points distribution, rank-movement split, top-5 spotlight |
 | 🔎 **Players** | Search by name, filter by country, rank range and points, download CSV, open a player profile card |
 | 🌍 **Countries** | Country podium, ranking charts, bubble chart, world map, points treemap |
@@ -175,10 +175,22 @@ Game_Analytics_Tennis/
 │   ├── sportradar_client.py      # API calls with retries, backoff and rate-limit handling
 │   ├── extract.py                # step 1: download raw JSON into data/raw/
 │   ├── transform.py              # flatten nested JSON into tables
-│   └── load.py                   # step 3: upsert into MySQL
+│   ├── load.py                   # step 3: upsert into MySQL
+│   └── refresh.py                # weekly refresh: download, validate, load, verify, log
 ├── app/                          # the dashboard
-│   ├── streamlit_app.py          # 9-page Streamlit app
-│   └── queries_loader.py         # reads sql/queries.sql for the SQL Playground
+│   ├── streamlit_app.py          # slim entry point: navigation and page routing
+│   └── dashboard/                # the app code, split into small modules
+│       ├── settings.py           # names, links, colours, page labels
+│       ├── database.py           # engines, cached queries, read-only playground runner
+│       ├── sqlguard.py           # SQL safety checks (pure Python, unit-testable)
+│       ├── charts.py             # Plotly and table helpers
+│       ├── components.py         # cards, KPI tiles, takeaways, pager
+│       ├── theme.py              # CSS, logos, header and footer
+│       ├── insights_calc.py      # numbers behind the insight cards
+│       ├── queries_loader.py     # reads sql/queries.sql for the SQL Playground
+│       └── views/                # one module per page
+│           ├── intro.py, overview.py, players.py, countries.py, leaderboards.py
+│           └── competitions.py, venues.py, playground.py, insights.py
 ├── certs/
 │   └── ca.pem                    # Aiven CA certificate (public)
 ├── data/
@@ -186,16 +198,22 @@ Game_Analytics_Tennis/
 ├── db/
 │   ├── __init__.py
 │   ├── init_db.py                # step 2: creates the database and tables
+│   ├── data_quality.py           # data-quality audit report
+│   ├── explain_report.py         # EXPLAIN plans and timings with and without each index
 │   ├── schema.sql                # local MySQL (Workbench) version
 │   └── schema_aiven.sql          # cloud version used by init_db.py
 ├── docs/
-│   └── screenshots/              # ER diagram (.png and .mwb), Aiven counts, 20 query screenshots
+│   ├── screenshots/              # ER diagram (.png and .mwb), Aiven counts, 20 query screenshots
+│   └── reports/                  # generated: data quality, EXPLAIN report, refresh log
 ├── sql/
 │   └── queries.sql               # the 20 analysis queries
+├── tests/                        # 99 pytest tests (parsers, SQL guard, API client, refresh, live DB checks)
 ├── .env.example                  # template for your private .env
 ├── .gitignore
+├── pytest.ini
 ├── README.md
-└── requirements.txt
+├── requirements.txt
+└── requirements-dev.txt          # adds pytest for the tests
 ```
 
 > 🔒 **Local only, never committed:** `.env` (your real keys and passwords) and `venv/` (your Python environment).
@@ -263,6 +281,27 @@ DB_SSL_CA = "certs/ca.pem"
 
 ---
 
+## 🔍 Quality, tests and monitoring
+
+| Command | What it does | Output |
+|---|---|---|
+| `python -m db.data_quality` | Audits missing values and placeholders (with the reason for each treatment), integrity, duplicates, rank ties, outliers (IQR rule) and week-over-week `movement` | `docs/reports/data_quality_report.md` and `.csv` |
+| `python -m db.explain_report` | Runs `EXPLAIN` and timings for the main queries, with and without each index | `docs/reports/explain_report.md` |
+| `python -m api.refresh` | One-command weekly refresh: download, validate the raw data, load, verify the database, write a log line | `docs/reports/refresh_log.csv` |
+| `pytest` | 73 offline tests plus 26 live-database checks (skipped automatically if the database cannot be reached) | console |
+
+Install the test tools once with `pip install -r requirements-dev.txt`. Use `pytest -m "not db"` to skip the live checks.
+
+**Monitoring plan.** The data is refreshed weekly with `python -m api.refresh`. Each run stops before touching the database if a download fails or a payload is empty. After loading it checks that:
+- no foreign key is orphaned and no value is impossible (rank below 1, negative points),
+- no table lost more than 20% of its rows compared with the previous run,
+- the ranking week is not older than the one already stored,
+- from the second week onward, the stored `movement` equals the real change in rank.
+
+The exit code is `0` when healthy, `1` on failure and `2` when it loaded with warnings, so the script can be scheduled (Windows Task Scheduler or cron) and its result inspected in the log.
+
+---
+
 ## 🛡️ Security and robustness
 
 - 🔐 Secrets live only in `.env` locally and in Streamlit **Secrets** in the cloud. Templates in the repository contain placeholders only.
@@ -295,14 +334,14 @@ DB_SSL_CA = "certs/ca.pem"
 
 | Metric from the project brief | How this project meets it |
 |---|---|
-| Data extraction accuracy | Retrying API client, raw JSON saved first, row counts verified against the database |
+| Data extraction accuracy | Retrying API client, raw JSON saved first, raw payloads validated before loading, data-quality report |
 | SQL database design | 6 normalised tables, PK and FK constraints, ER diagram |
-| Query efficiency | Indexes on every filter and join column, aggregation done in SQL |
+| Query efficiency | Indexes on every filter and join column, aggregation in SQL, EXPLAIN and timing report |
 | Streamlit functionality | 9 pages, filters, search, pagination, charts, CSV downloads |
 | Project completeness | API → JSON → MySQL → dashboard, deployed live |
 | Documentation | This README, ER diagram, query file and screenshots |
 | Presentation and usability | Top navigation, themed cards, live insights |
-| Error handling | Retries, safe SQL playground, friendly error cards |
+| Error handling | Retries, safe SQL playground, friendly error cards, tests for failure cases, refresh stops before changing data |
 | Innovation and creativity | SQL Playground with auto charts, world maps, computed insights, no-sidebar design |
 
 ---
@@ -337,7 +376,9 @@ DB_SSL_CA = "certs/ca.pem"
 [![GitHub](https://img.shields.io/badge/GitHub-abhi--1009-181717?style=flat&logo=github)](https://github.com/abhi-1009)
 [![Live App](https://img.shields.io/badge/Live_App-Tennis_Rankings_Explorer-FF4B4B?style=flat&logo=streamlit&logoColor=white)](https://tennis-rankings-explorer-stjtrxsnyclfiewespoedo.streamlit.app/)
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/abhijit-sinha-053b159a)
+<!-- Add your LinkedIn here, for example:
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/your-profile)
+-->
 
 ⭐ If you found this project useful, please star the repository.
 

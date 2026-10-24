@@ -1,4 +1,4 @@
-"""Parse sql/queries.sql into (id, title, sql) tuples for the Streamlit app."""
+"""Parse sql/queries.sql into (id, title, sql) tuples for the SQL Playground."""
 import re
 from pathlib import Path
 

@@ -1,0 +1,3 @@
+# Extra packages for running the tests. The deployed app only needs requirements.txt.
+-r requirements.txt
+pytest

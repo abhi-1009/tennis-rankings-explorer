@@ -32,7 +32,8 @@ def upsert(engine, table: str, df: pd.DataFrame) -> None:
     logger.info("Upserted %d rows into %s", len(df), table)
 
 
-def main() -> None:
+def main() -> bool:
+    """Load all six tables. Returns True on success, False if anything failed."""
     engine = create_engine(config.DB_URL, connect_args=config.DB_CONNECT_ARGS)
     try:
         categories, competitions = transform.parse_competitions(transform.load_raw("competitions"))
@@ -46,11 +47,13 @@ def main() -> None:
         upsert(engine, "Venues", venues)
         upsert(engine, "Competitors", competitors)
         upsert(engine, "Competitor_Rankings", rankings)
+        return True
     except FileNotFoundError as exc:
         logger.error("Raw file missing, run `python -m api.extract` first: %s", exc)
     except SQLAlchemyError as exc:
         logger.error("Database error: %s", exc)
+    return False
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(0 if main() else 1)
