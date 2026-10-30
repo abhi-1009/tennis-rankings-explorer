@@ -95,11 +95,11 @@ flowchart LR
 | Dataset | Rows loaded |
 |---|---|
 | Categories | 18 |
-| Competitions | 6,699 |
-| Complexes | 780 |
-| Venues | 4,139 |
-| Competitors | 1,000 |
-| Competitor rankings (doubles) | 1,000 |
+| Competitions | 6,722 |
+| Complexes | 787 |
+| Venues | 4,161 |
+| Competitors | 1,049 |
+| Competitor rankings | 3,000 |
 
 ---
 

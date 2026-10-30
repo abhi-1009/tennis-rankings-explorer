@@ -3,13 +3,13 @@ Venues,city_name,City missing in API,0,0.0,Stored as 'Unknown',Column is NOT NUL
 Venues,country_name,Country missing in API,0,0.0,Stored as 'Unknown',Keeps the venue row instead of silently dropping it.
 Venues,country_code,Country code missing in API,0,0.0,Stored as 'UNK',CHAR(3) NOT NULL; 'UNK' is easy to filter out and cannot be mistaken for a real code.
 Venues,timezone,Timezone missing in API,0,0.0,Stored as 'Unknown',Guessing a timezone from the country would invent data.
-Competitions,level,No level label in API,5984,89.09,Left NULL,"Level is optional; most events have none, so a default would distort the level chart."
+Competitions,level,No level label in API,5989,89.1,Left NULL,"Level is optional; most events have none, so a default would distort the level chart."
 Competitions,gender,Gender missing in API,0,0.0,Stored as 'unknown',NOT NULL column; keeps the event visible in type and category analysis.
 Competitions,type,Type missing in API,0,0.0,Stored as 'unknown',NOT NULL column; flagged value is easy to exclude.
 Competitions,category_id,No category in API,0,0.0,Left NULL,"The foreign key allows NULL, and a fake category would corrupt the category counts."
-Competitions,parent_id,Top-level event (not an error),623,9.27,Left NULL,Top-level competitions have no parent by design (query 1.7 depends on this).
+Competitions,parent_id,Top-level event (not an error),628,9.34,Left NULL,Top-level competitions have no parent by design (query 1.7 depends on this).
 Competitors,country,Country missing in API,0,0.0,Stored as 'Unknown',Keeps the player in rankings; excluded from country analysis by name.
-Competitors,country_code,Country code missing in API,51,4.95,Stored as 'UNK',Needed as CHAR(3) NOT NULL; the map page ignores unknown codes.
+Competitors,country_code,Country code missing in API,51,4.86,Stored as 'UNK',Needed as CHAR(3) NOT NULL; the map page ignores unknown codes.
 Competitors,abbreviation,Abbreviation missing in API,0,0.0,Stored as 'N/A',Abbreviation is cosmetic and not used in any analysis.
 Competitor_Rankings,points,Zero points,0,0.0,Kept as 0,"A real value for players with no points, not a missing one."
 Competitor_Rankings,competitions_played,Zero competitions played,0,0.0,Kept as 0,A real value; also the default if the field is absent.
