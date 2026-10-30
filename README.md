@@ -62,14 +62,19 @@ The app uses a **top navigation bar** (no sidebar), a dark court-themed design, 
 | 🧪 **SQL Playground** | Run your own **read-only** SQL (or any of the 20 project queries), see the table and draw instant charts |
 | 💡 **Insights** | Live-calculated insights, recommendations, limitations, acknowledgements, thank-you |
 
-<!--
-After you add screenshots of the live app to docs/screenshots/ (for example app_overview.png), uncomment this block:
-
 <p align="center">
-  <img src="docs/screenshots/app_overview.png" width="48%">
-  <img src="docs/screenshots/app_playground.png" width="48%">
+  <img src="docs/screenshots/App_Screenshots/Introduction_1.png" width="48%">
+  <img src="docs/screenshots/App_Screenshots/Introduction_2.png" width="48%">
+  <img src="docs/screenshots/App_Screenshots/Introduction_3.png" width="48%">
+  <img src="docs/screenshots/App_Screenshots/Introduction_4.png" width="48%">
+  <img src="docs/screenshots/App_Screenshots/Overview.png" width="48%">
+  <img src="docs/screenshots/App_Screenshots/Leaderboards.png" width="48%">
+  <img src="docs/screenshots/App_Screenshots/SQL_Playground_Venues_1.png" width="48%">
+  <img src="docs/screenshots/App_Screenshots/SQL_Playground_Venues_2.png" width="48%">
+  <img src="docs/screenshots/App_Screenshots/Key_Insights.png" width="48%">
+  <img src="docs/screenshots/App_Screenshots/Limitations.png" width="48%">
+  <img src="docs/screenshots/App_Screenshots/Recommendations.png" width="48%">
 </p>
--->
 
 ---
 
@@ -204,7 +209,10 @@ Game_Analytics_Tennis/
 │   └── schema_aiven.sql          # cloud version used by init_db.py
 ├── docs/
 │   ├── screenshots/              # ER diagram (.png and .mwb), Aiven counts, 20 query screenshots
-│   └── reports/                  # generated: data quality, EXPLAIN report, refresh log
+│   ├── App_Screenshots/          # 11 Screenshots captured from live App 
+│   ├── reports/                  # generated: data quality, EXPLAIN report, refresh log, pytest_results
+│   ├── build_report              # Python file for building report
+│   └── Tennis_Project_Report     # Project reported created by python file
 ├── sql/
 │   └── queries.sql               # the 20 analysis queries
 ├── tests/                        # 99 pytest tests (parsers, SQL guard, API client, refresh, live DB checks)
@@ -213,7 +221,7 @@ Game_Analytics_Tennis/
 ├── pytest.ini
 ├── README.md
 ├── requirements.txt
-└── requirements-dev.txt          # adds pytest for the tests
+└── requirements-dev.txt          # adds pytest for the tests and python-docx for report
 ```
 
 > 🔒 **Local only, never committed:** `.env` (your real keys and passwords) and `venv/` (your Python environment).
