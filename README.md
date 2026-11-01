@@ -62,19 +62,20 @@ The app uses a **top navigation bar** (no sidebar), a dark court-themed design, 
 | 🧪 **SQL Playground** | Run your own **read-only** SQL (or any of the 20 project queries), see the table and draw instant charts |
 | 💡 **Insights** | Live-calculated insights, recommendations, limitations, acknowledgements, thank-you |
 
-<p align="center">
-  <img src="docs/screenshots/App_Screenshots/Introduction_1.png" width="48%">
-  <img src="docs/screenshots/App_Screenshots/Introduction_2.png" width="48%">
-  <img src="docs/screenshots/App_Screenshots/Introduction_3.png" width="48%">
-  <img src="docs/screenshots/App_Screenshots/Introduction_4.png" width="48%">
-  <img src="docs/screenshots/App_Screenshots/Overview.png" width="48%">
-  <img src="docs/screenshots/App_Screenshots/Leaderboards.png" width="48%">
-  <img src="docs/screenshots/App_Screenshots/SQL_Playground_Venues_1.png" width="48%">
-  <img src="docs/screenshots/App_Screenshots/SQL_Playground_Venues_2.png" width="48%">
-  <img src="docs/screenshots/App_Screenshots/Key_Insights.png" width="48%">
-  <img src="docs/screenshots/App_Screenshots/Limitations.png" width="48%">
-  <img src="docs/screenshots/App_Screenshots/Recommendations.png" width="48%">
-</p>
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/readme/01_introduction.png" alt="Introduction page" width="100%"><br><sub><b>Introduction</b>: problem, key result, assumptions</sub></td>
+    <td align="center"><img src="docs/screenshots/readme/02_overview.png" alt="Overview page" width="100%"><br><sub><b>Overview</b>: KPIs and charts with takeaways</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/readme/03_countries.png" alt="Countries page" width="100%"><br><sub><b>Countries</b>: rankings and world map</sub></td>
+    <td align="center"><img src="docs/screenshots/readme/04_leaderboards.png" alt="Leaderboards page" width="100%"><br><sub><b>Leaderboards</b>: top ranked and highest points</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/readme/05_sql_playground.png" alt="SQL Playground" width="100%"><br><sub><b>SQL Playground</b>: read-only SQL with instant charts</sub></td>
+    <td align="center"><img src="docs/screenshots/readme/06_insights.png" alt="Insights page" width="100%"><br><sub><b>Insights</b>: live insights and recommendations</sub></td>
+  </tr>
+</table>
 
 ---
 

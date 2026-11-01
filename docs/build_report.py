@@ -2,6 +2,9 @@
 
 Run from the project root:      python docs/build_report.py          (compact version, about 15 to 18 pages)
                                 python docs/build_report.py --full   (long version with every table and screenshot)
+Options:   --cols=3     screenshots per row in the app section (default: chosen automatically, 2 or 3)
+           --crop       cut screenshots to the common shape instead of adding bars (default: keep the whole picture)
+All screenshots are resized to ONE fixed shape automatically, so no manual resizing in Word is needed.
 Output:                         docs/Tennis_Project_Report.docx
 
 It reads (nothing is typed by hand, so re-run it after every refresh):
@@ -13,11 +16,14 @@ Missing files never stop the build; they are listed at the end and marked in the
 """
 import csv
 import re
+import shutil
 import sys
+import tempfile
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
+from PIL import Image as PILImage
 from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
@@ -39,6 +45,9 @@ SHOTS = ROOT / "docs" / "screenshots"
 NAVY, TEAL, GREY = "0B1230", "0E7490", "F1F5F9"
 MISSING: list[str] = []
 COMPACT = "--full" not in sys.argv
+CROP = "--crop" in sys.argv
+COLS = next((int(a.split("=")[1]) for a in sys.argv if a.startswith("--cols=")), None)
+SHOT_TMP = Path(tempfile.mkdtemp(prefix="report_shots_"))   # resized copies live here and are deleted at the end
 TEXT_W = 6.7 if COMPACT else 6.45          # usable text width in inches
 
 
@@ -447,37 +456,69 @@ def dictionary_compact(doc) -> None:
               widths=[1.3, 5.4], font=7.5)
 
 
-def grid_figures(doc, items: list, cols: int = 2, width: float = 3.25, max_h: float = 2.5) -> None:
-    """Screenshots in a grid. items = [(path, caption)]. A single leftover picture gets a full-width, larger row."""
+def uniform_image(path: Path, size: tuple, crop: bool = False) -> Path:
+    """Copy of a screenshot at exactly `size` pixels, so every picture has the same shape.
+
+    Default: the whole picture is kept and the free space is filled with the picture's own background colour.
+    crop=True: the picture fills the frame and the extra part (bottom or sides) is cut off.
+    """
+    img = PILImage.open(path).convert("RGB")
+    w, h = size
+    if crop:
+        scale = max(w / img.width, h / img.height)
+        img = img.resize((round(img.width * scale), round(img.height * scale)), PILImage.LANCZOS)
+        left = (img.width - w) // 2
+        out = img.crop((left, 0, left + w, h))
+    else:
+        scale = min(w / img.width, h / img.height)
+        img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), PILImage.LANCZOS)
+        out = PILImage.new("RGB", size, img.getpixel((0, 0)))
+        out.paste(img, ((w - img.width) // 2, (h - img.height) // 2))
+    target = SHOT_TMP / f"{len(list(SHOT_TMP.iterdir())):03d}_{Path(path).stem}.png"
+    out.save(target)
+    return target
+
+
+def choose_cols(n: int) -> int:
+    """2 or 3 pictures per row, whichever leaves the fewest empty cells."""
+    if n <= 2:
+        return max(n, 1)
+    return 3 if n % 3 == 0 else 2 if n % 2 == 0 else 3
+
+
+def grid_figures(doc, items: list, cols: int | None = None) -> None:
+    """Screenshots side by side, 2 or 3 per row, all with exactly the same size and shape (16:10).
+
+    items = [(path, caption)]. Empty cells in the last row stay blank so every picture keeps the same size.
+    """
+    cols = cols or COLS or choose_cols(len(items))
+    pic_w = TEXT_W / cols - 0.15
     table = doc.add_table(rows=0, cols=cols)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    for start in range(0, len(items), cols):
-        chunk = items[start:start + cols]
+    table.autofit = False
+    for start_ in range(0, len(items), cols):
         cells = list(table.add_row().cells)
         table.rows[-1]._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
-        w, h = width, max_h
-        if len(chunk) == 1 and cols == 2:                      # last odd picture: use the whole row, a bit larger
-            cells = [cells[0].merge(cells[1])]
-            w, h = 4.3, 2.4
-        for cell, (path, caption) in zip(cells, chunk):
+        for cell, (path, caption) in zip(cells, items[start_:start_ + cols]):
             cell.text = ""
             p = cell.paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.paragraph_format.space_after = Pt(0)
             if path and Path(path).exists():
-                info = DocxImage.from_file(str(path))
-                p.add_run().add_picture(str(path), width=Inches(min(w, h * info.px_width / info.px_height)))
+                p.add_run().add_picture(str(uniform_image(Path(path), (1280, 800), CROP)), width=Inches(pic_w))
             else:
                 MISSING.append(caption)
                 p.add_run(f"[missing: {caption}]").italic = True
             cap = cell.add_paragraph()
             cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            cap.paragraph_format.space_after = Pt(4)
             add_runs(cap, caption, 7.5)
             for r_ in cap.runs:
                 r_.italic = True
-    for row in table.rows:
-        merged = len({id(c._tc) for c in row.cells}) == 1
-        for cell in row.cells:
-            cell.width = Inches(TEXT_W if merged else TEXT_W / cols)
+    for i in range(cols):
+        table.columns[i].width = Inches(TEXT_W / cols)
+        for row in table.rows:
+            row.cells[i].width = Inches(TEXT_W / cols)
     doc.add_paragraph().paragraph_format.space_after = Pt(2)
 
 
@@ -506,8 +547,7 @@ def query_block(doc, qid: str, title: str, sql: str, rows_returned, shot) -> Non
     rp = right.paragraphs[0]
     rp.alignment = WD_ALIGN_PARAGRAPH.CENTER
     if shot and Path(shot).exists():
-        info = DocxImage.from_file(str(shot))
-        rp.add_run().add_picture(str(shot), width=Inches(min(4.15, 2.15 * info.px_width / info.px_height)))
+        rp.add_run().add_picture(str(uniform_image(Path(shot), (1160, 600))), width=Inches(4.15))   # 4.15 x 2.15 in, same for all 20
     else:
         MISSING.append(f"Result of query {qid}")
         rp.add_run(f"[Screenshot missing: query {qid}]").italic = True
@@ -681,7 +721,7 @@ def build() -> None:
     heading(doc, "7. SQL analysis (20 queries)", 1)
     para(doc, "The queries answer the three parts of the brief (competitions, venues, rankings). Each block shows the SQL, the number "
               "of rows it returns on the live database and the result screenshot. All 20 are also run by the test suite.", 9.5)
-    from dashboard.queries_loader import load_queries  # type: ignore
+    from dashboard.queries_loader import load_queries # type: ignore
     engine = facts.get("engine")
     for qid, title, sql in load_queries(ROOT / "sql" / "queries.sql"):
         n = None
@@ -897,6 +937,7 @@ def build() -> None:
         "python docs/build_report.py       # rebuild this report"]))
 
     doc.save(OUT)
+    shutil.rmtree(SHOT_TMP, ignore_errors=True)
     print(f"Report saved to {OUT}")
     if MISSING:
         print("\nThese inputs were missing (the report marks them):")
