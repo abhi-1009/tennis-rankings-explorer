@@ -46,13 +46,14 @@ def test_no_impossible_values(engine):
     assert "WARN" not in set(checks["Status"]), checks[checks["Status"] == "WARN"].to_dict("records")
 
 
-def test_latest_ranking_week_has_rows_in_every_list(engine):
-    period = dq.latest_period(engine)
-    assert period is not None
+def test_every_ranking_list_has_a_newest_week_with_rows(engine):
+    periods = dq.latest_periods(engine)
+    assert periods, "no ranking lists stored"
     with engine.connect() as conn:
-        counts = conn.execute(text("SELECT ranking_name, COUNT(*) FROM Competitor_Rankings WHERE year = :y AND week = :w "
-                                   "GROUP BY ranking_name"), {"y": period[0], "w": period[1]}).fetchall()
-    assert counts and all(n > 0 for _, n in counts)
+        for name, (year, week) in periods.items():
+            n = conn.execute(text("SELECT COUNT(*) FROM Competitor_Rankings WHERE ranking_name = :n AND year = :y AND week = :w"),
+                             {"n": name, "y": year, "w": week}).scalar()
+            assert n > 0, f"{name} has no rows in its newest week"
 
 
 def test_expected_indexes_exist(engine):
@@ -64,8 +65,8 @@ def test_expected_indexes_exist(engine):
 
 def test_movement_matches_real_rank_change_when_two_weeks_exist(engine):
     result = dq.movement_validation(engine)
-    if result is None:
-        pytest.skip("only one ranking week is stored yet")
+    if result is None or not result["compared"]:
+        pytest.skip("no ranking list has two consecutive weeks stored yet (movement is only comparable week to week)")
     assert max(result["match_up_pct"], result["match_down_pct"]) >= 90
 
 

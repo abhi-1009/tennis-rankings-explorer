@@ -59,6 +59,7 @@ def test_movement_validation_matches_real_rank_changes(two_week_engine):
     result = dq.movement_validation(two_week_engine)
     assert result["compared"] == 3
     assert result["current"] == (2026, 43) and result["previous"] == (2026, 42)
+    assert result["skipped"] == []
     assert result["match_up_pct"] == 100.0
     assert result["convention"] == "positive movement = moved up"
 
@@ -70,3 +71,33 @@ def test_full_report_builds_and_lists_every_section(two_week_engine):
         assert heading in report
     assert summary["warn"] == 0
     assert len(placeholders) == len(dq.PLACEHOLDER_RULES)
+
+
+def test_latest_periods_are_found_per_list(two_week_engine):
+    from sqlalchemy import text
+    with two_week_engine.begin() as conn:
+        conn.execute(text("INSERT INTO Competitor_Rankings (`rank`, movement, points, competitions_played, competitor_id, "
+                          "ranking_name, year, week, gender) VALUES (1, 0, 500, 5, 'p1', 'WTA', 2026, 42, 'women')"))
+    periods = dq.latest_periods(two_week_engine)
+    assert periods == {"ATP": (2026, 43), "WTA": (2026, 42)}
+    assert dq.latest_period(two_week_engine) == (2026, 43)
+    assert dq.periods_label(periods) == "ATP week 43 \u00b7 WTA week 42"
+
+
+def test_periods_label_when_all_lists_agree():
+    assert dq.periods_label({"ATP": (2026, 44), "WTA": (2026, 44)}) == "year 2026, week 44"
+    assert dq.periods_label({}) == ""
+
+
+def test_newest_consecutive_pair_skips_gaps_and_handles_year_end():
+    assert dq._newest_consecutive_pair([(2026, 44), (2026, 46)]) is None          # two weeks apart
+    assert dq._newest_consecutive_pair([(2026, 43), (2026, 44), (2026, 46)]) == ((2026, 44), (2026, 43))
+    assert dq._newest_consecutive_pair([(2026, 53), (2027, 1)]) == ((2027, 1), (2026, 53))
+
+
+def test_movement_is_not_compared_across_a_gap(sqlite_engine):
+    from sqlalchemy import text
+    with sqlite_engine.begin() as conn:       # week 42 exists; add week 44 (not consecutive)
+        conn.execute(text("INSERT INTO Competitor_Rankings (`rank`, movement, points, competitions_played, competitor_id, "
+                          "ranking_name, year, week, gender) VALUES (1, 5, 1000, 10, 'p1', 'ATP', 2026, 44, 'men')"))
+    assert dq.movement_validation(sqlite_engine) is None

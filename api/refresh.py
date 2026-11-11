@@ -40,8 +40,9 @@ def summarise_raw(raw: dict) -> dict:
         raise ValueError(f"Empty payload: competitions={competitions}, complexes={len(complexes)}, ranking rows={entries}")
     year = max((r.get("year", 0) for r in lists), default=0)
     week = max((r.get("week", 0) for r in lists if r.get("year", 0) == year), default=0)
+    found = {r.get("name", "unknown"): (r.get("year", 0), r.get("week", 0)) for r in lists}
     return {"competitions": competitions, "complexes": len(complexes), "venues": venues,
-            "ranking_rows": entries, "year": year, "week": week}
+            "ranking_rows": entries, "year": year, "week": week, "lists": found}
 
 
 def classify_week(raw_period: tuple, db_period) -> str:
@@ -51,6 +52,30 @@ def classify_week(raw_period: tuple, db_period) -> str:
     if raw_period == db_period:
         return "same week (rows updated in place)"
     return "new week" if raw_period > db_period else "OLDER than database (check the API)"
+
+
+def classify_lists(raw_lists: dict, db_lists: dict) -> str:
+    """Compare each ranking list's downloaded week with the newest week already stored for that same list.
+
+    ATP and WTA publish on different days, so the lists can legitimately be on different weeks.
+    """
+    if not db_lists:
+        return "first load"
+    newer = [n for n, p in raw_lists.items() if p > db_lists.get(n, (0, 0))]
+    older = [n for n, p in raw_lists.items() if p < db_lists.get(n, (0, 0))]
+    if newer:
+        return "new week"
+    if older:
+        return "OLDER than database (check the API)"
+    return "same week (rows updated in place)"
+
+
+def week_label(lists: dict) -> str:
+    """'46' when every list is on the same week, otherwise 'ATP 46 / WTA 45'."""
+    weeks = set(lists.values())
+    if len(weeks) <= 1:
+        return str(next(iter(weeks))[1]) if weeks else ""
+    return " / ".join(f"{name} {week}" for name, (year, week) in sorted(lists.items()))
 
 
 def evaluate_counts(current: dict, previous: dict | None, tolerance: float = DROP_TOLERANCE) -> list:
@@ -111,14 +136,17 @@ def main(argv=None) -> int:
         append_log(row)
         logger.error("Refresh stopped: %s. The database was not changed.", row["notes"])
         return 1
-    logger.info("Raw data: %s competitions, %s venues, %s ranking rows, ranking week %s/%s",
+    logger.info("Raw data: %s competitions, %s venues, %s ranking rows, ranking week %s",
                 f"{summary['competitions']:,}", f"{summary['venues']:,}", f"{summary['ranking_rows']:,}",
-                summary["year"], summary["week"])
+                week_label(summary["lists"]))
+    if len(set(summary["lists"].values())) > 1:
+        logger.info("The ranking lists are on different weeks (%s). This is normal when the tours publish on different days.",
+                    week_label(summary["lists"]))
 
     # 3) load and verify
     try:
         engine = create_engine(config.DB_URL, connect_args=config.DB_CONNECT_ARGS)
-        row["week_status"] = classify_week((summary["year"], summary["week"]), data_quality.latest_period(engine))
+        row["week_status"] = classify_lists(summary["lists"], data_quality.latest_periods(engine))
         logger.info("Ranking week status: %s", row["week_status"])
         if not load.main():
             row["notes"] = "load failed"
@@ -143,13 +171,13 @@ def main(argv=None) -> int:
         warnings.append("downloaded ranking week is older than the database")
     if movement:
         pct = max(movement["match_up_pct"], movement["match_down_pct"])
-        logger.info("Movement check %s vs %s: %.1f%% of %s players match (%s)", movement["current"], movement["previous"],
+        logger.info("Movement check (%s): %.1f%% of %s players match (%s)", movement["label"],
                     pct, f"{movement['compared']:,}", movement["convention"])
-        if pct < 90:
+        if movement["compared"] and pct < 90:
             warnings.append(f"movement matches the real rank change for only {pct:.0f}% of players")
 
     row.update({"status": "OK" if not warnings else "WARNINGS", "ranking_year": summary["year"],
-                "ranking_week": summary["week"], **counts, "integrity_warnings": len(bad), "notes": "; ".join(warnings)})
+                "ranking_week": week_label(summary["lists"]), **counts, "integrity_warnings": len(bad), "notes": "; ".join(warnings)})
     append_log(row)
     for w in warnings:
         logger.warning(w)

@@ -213,4 +213,4 @@ def render_header() -> None:
 def render_footer() -> None:
     html_block(f"""
     <div class="footer"><div class="tech-row">{tech_badges()}</div>
-    Tennis Rankings Explorer · Data courtesy of Sportradar · Built by {esc(settings.AUTHOR_NAME)}</div>""")
+    Tennis Rankings Explorer · Data courtesy of Sportradar · Built by {esc(settings.TEAM_NAMES)}</div>""")

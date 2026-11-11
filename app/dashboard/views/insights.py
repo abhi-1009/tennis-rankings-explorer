@@ -45,5 +45,5 @@ def render(rk: pd.DataFrame) -> None:
     ])
     html_block(f"""
     <div class="thanks"><div style="font-size:3rem">🎾</div><h2>Thank you for exploring!</h2>
-    <p>Game, set and match. I hope this dashboard made tennis data easier to explore.<br>Built by <b>{esc(settings.AUTHOR_NAME)}</b></p>
+    <p>Game, set and match. We hope this dashboard made tennis data easier to explore.<br>Built by <b>{esc(settings.TEAM_NAMES)}</b></p>
     <div class="tech-row" style="justify-content:center">{tech_badges()}</div></div>""")

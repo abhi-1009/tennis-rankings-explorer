@@ -1,3 +1,5 @@
 run_at_utc,status,ranking_year,ranking_week,week_status,competitions,venues,competitors,ranking_rows,integrity_warnings,notes
 2026-10-24 14:38,OK,2026,43,new week,6717,4156,1030,2000,0,
 2026-10-30 07:51,OK,2026,44,new week,6722,4161,1049,3000,0,
+2026-11-09 07:14,WARNINGS,2026,46,new week,6728,4183,1071,4000,0,movement matches the real rank change for only 0% of players
+2026-11-11 17:52,OK,2026,46,new week,6728,4185,1074,4500,0,

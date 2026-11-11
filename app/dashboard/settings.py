@@ -1,6 +1,15 @@
 """Project-wide constants: names, links, colours and page labels."""
 
-AUTHOR_NAME = "ABHIJIT SINHA"          # shown on the Insights page and in the footer
+# ---- the team (edit here once; the app footer, Introduction page, Insights page and the report all use it)
+# "work" = what that member did. Leave it empty ("") and it is simply not shown.
+TEAM = [
+    {"name": "Abhijit Sinha", "role": "Team leader", "work": "Introduction, full Streamlit dashboard and conclusion"},
+    {"name": "Chanchal Hudda", "role": "Team member", "work": "Data extraction"},
+    {"name": "Patel Bhagyashree Arvindkumar", "role": "Team member", "work": "SQL part"},
+    {"name": "Shubham Priyadarshi Nath", "role": "Team member", "work": "Data cleaning and preparation"},
+]
+TEAM_NAMES = ", ".join(m["name"] for m in TEAM)
+AUTHOR_NAME = TEAM_NAMES               # kept so older code that reads AUTHOR_NAME still works
 LIVE_URL = "https://tennis-rankings-explorer-stjtrxsnyclfiewespoedo.streamlit.app/"
 REPO_URL = "https://github.com/abhi-1009/tennis-rankings-explorer"
 

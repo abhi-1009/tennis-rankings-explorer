@@ -60,24 +60,40 @@ def in_clause(column: str, values: list, params: dict, prefix: str) -> str:
     return f"{column} IN ({', '.join(names)})"
 
 
-def latest_period():
-    """Return (year, week) of the newest ranking snapshot, or None when the table is empty."""
-    df = run_query("SELECT year, week FROM Competitor_Rankings ORDER BY year DESC, week DESC LIMIT 1")
-    return None if df.empty else (int(df["year"][0]), int(df["week"][0]))
+def latest_snapshot() -> dict:
+    """Newest (year, week) of EACH ranking list: {'ATP': (2026, 46), 'WTA': (2026, 45)}.
+
+    ATP and WTA publish on different days, so for a few days each week the lists are a week apart.
+    """
+    df = run_query("SELECT ranking_name, MAX(year * 100 + week) AS yw FROM Competitor_Rankings "
+                   "GROUP BY ranking_name ORDER BY ranking_name")
+    return {r.ranking_name: (int(r.yw) // 100, int(r.yw) % 100) for r in df.itertuples()}
+
+
+def snapshot_label(snapshot: dict) -> str:
+    """'year 2026, week 44' when all lists agree, otherwise 'ATP week 46 · WTA week 45'."""
+    if not snapshot:
+        return ""
+    if len(set(snapshot.values())) == 1:
+        year, week = next(iter(snapshot.values()))
+        return f"year {year}, week {week}"
+    return " · ".join(f"{name} week {week}" for name, (year, week) in sorted(snapshot.items()))
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_rankings(year: int, week: int) -> pd.DataFrame:
-    """Rankings for one week joined with competitor details (about 1000 rows)."""
+def load_rankings() -> pd.DataFrame:
+    """Current rows of every ranking list (each list at its own newest week) joined with competitor details."""
     sql = """
         SELECT r.`rank`, r.movement, r.points, r.competitions_played, r.ranking_name, r.gender,
                c.competitor_id, c.name, c.country, c.country_code
         FROM Competitor_Rankings r
+        JOIN (SELECT ranking_name, MAX(year * 100 + week) AS latest_yw
+              FROM Competitor_Rankings GROUP BY ranking_name) cur
+          ON cur.ranking_name = r.ranking_name AND cur.latest_yw = r.year * 100 + r.week
         JOIN Competitors c ON c.competitor_id = r.competitor_id
-        WHERE r.year = :y AND r.week = :w
     """
     with get_engine().connect() as conn:
-        return pd.read_sql(text(sql), conn, params={"y": year, "w": week})
+        return pd.read_sql(text(sql), conn)
 
 
 def execute_playground(sql: str, max_rows: int):

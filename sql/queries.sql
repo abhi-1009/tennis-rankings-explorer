@@ -106,42 +106,47 @@ WHERE cx.complex_name = 'Nacional';
 
 -- ---------------------------------------------------------------------
 -- PART 3: DOUBLES COMPETITOR RANKINGS
--- "Current week" = the latest (year, week) loaded in Competitor_Rankings.
+-- "Current week" = the newest (year, week) of EACH ranking list. ATP and WTA are
+-- published on different weeks, so one global latest week would drop a list.
 -- ---------------------------------------------------------------------
 
 -- 3.1 Get all competitors with their rank and points (latest week)
 SELECT c.name, c.country, r.ranking_name, r.`rank`, r.points
 FROM Competitor_Rankings r
 JOIN Competitors c ON c.competitor_id = r.competitor_id
-WHERE (r.year, r.week) = (SELECT year, week FROM Competitor_Rankings
-                          ORDER BY year DESC, week DESC LIMIT 1)
+JOIN (SELECT ranking_name, MAX(year * 100 + week) AS latest_yw
+      FROM Competitor_Rankings GROUP BY ranking_name) cur
+  ON cur.ranking_name = r.ranking_name AND cur.latest_yw = r.year * 100 + r.week
 ORDER BY r.ranking_name, r.`rank`;
 
 -- 3.2 Find competitors ranked in the top 5 (latest week)
 SELECT c.name, c.country, r.ranking_name, r.`rank`, r.points
 FROM Competitor_Rankings r
 JOIN Competitors c ON c.competitor_id = r.competitor_id
+JOIN (SELECT ranking_name, MAX(year * 100 + week) AS latest_yw
+      FROM Competitor_Rankings GROUP BY ranking_name) cur
+  ON cur.ranking_name = r.ranking_name AND cur.latest_yw = r.year * 100 + r.week
 WHERE r.`rank` <= 5
-  AND (r.year, r.week) = (SELECT year, week FROM Competitor_Rankings
-                          ORDER BY year DESC, week DESC LIMIT 1)
 ORDER BY r.ranking_name, r.`rank`;
 
 -- 3.3 List competitors with no rank movement (stable rank)
 SELECT c.name, c.country, r.ranking_name, r.`rank`, r.movement
 FROM Competitor_Rankings r
 JOIN Competitors c ON c.competitor_id = r.competitor_id
+JOIN (SELECT ranking_name, MAX(year * 100 + week) AS latest_yw
+      FROM Competitor_Rankings GROUP BY ranking_name) cur
+  ON cur.ranking_name = r.ranking_name AND cur.latest_yw = r.year * 100 + r.week
 WHERE r.movement = 0
-  AND (r.year, r.week) = (SELECT year, week FROM Competitor_Rankings
-                          ORDER BY year DESC, week DESC LIMIT 1)
 ORDER BY r.`rank`;
 
 -- 3.4 Get the total points of competitors from a specific country (e.g. Croatia)
 SELECT c.country, SUM(r.points) AS total_points
 FROM Competitor_Rankings r
 JOIN Competitors c ON c.competitor_id = r.competitor_id
+JOIN (SELECT ranking_name, MAX(year * 100 + week) AS latest_yw
+      FROM Competitor_Rankings GROUP BY ranking_name) cur
+  ON cur.ranking_name = r.ranking_name AND cur.latest_yw = r.year * 100 + r.week
 WHERE c.country = 'Croatia'
-  AND (r.year, r.week) = (SELECT year, week FROM Competitor_Rankings
-                          ORDER BY year DESC, week DESC LIMIT 1)
 GROUP BY c.country;
 
 -- 3.5 Count the number of competitors per country
@@ -150,12 +155,13 @@ FROM Competitors
 GROUP BY country
 ORDER BY competitor_count DESC;
 
--- 3.6 Find competitors with the highest points in the current week
+-- 3.6 Find competitors with the highest points in the current week (per ranking list)
 SELECT c.name, c.country, r.ranking_name, r.points
 FROM Competitor_Rankings r
 JOIN Competitors c ON c.competitor_id = r.competitor_id
-WHERE (r.year, r.week) = (SELECT year, week FROM Competitor_Rankings
-                          ORDER BY year DESC, week DESC LIMIT 1)
-  AND r.points = (SELECT MAX(points) FROM Competitor_Rankings
-                  WHERE (year, week) = (SELECT year, week FROM Competitor_Rankings
-                                        ORDER BY year DESC, week DESC LIMIT 1));
+JOIN (SELECT ranking_name, MAX(year * 100 + week) AS latest_yw
+      FROM Competitor_Rankings GROUP BY ranking_name) cur
+  ON cur.ranking_name = r.ranking_name AND cur.latest_yw = r.year * 100 + r.week
+WHERE r.points = (SELECT MAX(r2.points) FROM Competitor_Rankings r2
+                  WHERE r2.ranking_name = r.ranking_name
+                    AND r2.year * 100 + r2.week = cur.latest_yw);

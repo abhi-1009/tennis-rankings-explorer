@@ -36,7 +36,12 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "app"))
 
-AUTHOR = "Abhijit Sinha"
+try:                                   # the team is defined once, in app/dashboard/settings.py
+    from dashboard import settings as team_settings  # pyright: ignore[reportMissingImports]
+    TEAM = team_settings.TEAM
+except Exception:                      # noqa: BLE001
+    TEAM = [{"name": "Abhijit Sinha", "role": "Team leader", "work": ""}]
+LEADER = next((m["name"] for m in TEAM if "leader" in m["role"].lower()), TEAM[0]["name"])
 LIVE_URL = "https://tennis-rankings-explorer-stjtrxsnyclfiewespoedo.streamlit.app/"
 REPO_URL = "https://github.com/abhi-1009/tennis-rankings-explorer"
 OUT = ROOT / "docs" / "Tennis_Project_Report.docx"
@@ -280,12 +285,12 @@ def collect_facts() -> dict:
         facts["types"] = q("SELECT type, COUNT(*) AS n FROM Competitions GROUP BY type ORDER BY n DESC")
         facts["weeks"] = q("SELECT year, week, COUNT(*) AS n FROM Competitor_Rankings GROUP BY year, week ORDER BY year, week")
         if facts["period"]:
-            y, w = facts["period"]
+            # each ranking list at its own newest week (ATP and WTA can be on different weeks)
             facts["players"] = q("SELECT c.country, COUNT(DISTINCT c.competitor_id) AS n FROM Competitor_Rankings r "
-                                 "JOIN Competitors c ON c.competitor_id = r.competitor_id WHERE r.year = :y AND r.week = :w "
-                                 "GROUP BY c.country ORDER BY n DESC", {"y": y, "w": w})
-            facts["stable_pct"] = float(q("SELECT 100.0 * SUM(CASE WHEN movement = 0 THEN 1 ELSE 0 END) / COUNT(*) AS p "
-                                          "FROM Competitor_Rankings WHERE year = :y AND week = :w", {"y": y, "w": w}).iloc[0, 0])
+                                 "JOIN Competitors c ON c.competitor_id = r.competitor_id " + dq.CURRENT_JOIN +
+                                 " GROUP BY c.country ORDER BY n DESC")
+            facts["stable_pct"] = float(q("SELECT 100.0 * SUM(CASE WHEN r.movement = 0 THEN 1 ELSE 0 END) / COUNT(*) AS p "
+                                          "FROM Competitor_Rankings r " + dq.CURRENT_JOIN)["p"].to_numpy(dtype=float)[0])
         facts["movement"] = dq.movement_validation(engine)
         facts["engine"] = engine
         return facts
@@ -466,12 +471,12 @@ def uniform_image(path: Path, size: tuple, crop: bool = False) -> Path:
     w, h = size
     if crop:
         scale = max(w / img.width, h / img.height)
-        img = img.resize((round(img.width * scale), round(img.height * scale)), PILImage.LANCZOS)
+        img = img.resize((round(img.width * scale), round(img.height * scale)), PILImage.Resampling.LANCZOS)
         left = (img.width - w) // 2
         out = img.crop((left, 0, left + w, h))
     else:
         scale = min(w / img.width, h / img.height)
-        img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), PILImage.LANCZOS)
+        img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), PILImage.Resampling.LANCZOS)
         out = PILImage.new("RGB", size, img.getpixel((0, 0)))
         out.paste(img, ((w - img.width) // 2, (h - img.height) // 2))
     target = SHOT_TMP / f"{len(list(SHOT_TMP.iterdir())):03d}_{Path(path).stem}.png"
@@ -491,6 +496,8 @@ def grid_figures(doc, items: list, cols: int | None = None) -> None:
 
     items = [(path, caption)]. Empty cells in the last row stay blank so every picture keeps the same size.
     """
+    if not items:                      # nothing to show: never create an empty table (Word rejects it)
+        return
     cols = cols or COLS or choose_cols(len(items))
     pic_w = TEXT_W / cols - 0.15
     table = doc.add_table(rows=0, cols=cols)
@@ -587,7 +594,10 @@ def build() -> None:
     para(doc, "Unlocking Tennis Data with the Sportradar API", 17, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=30)
     para(doc, "From raw nested JSON to a cloud MySQL database and a live, interactive dashboard", 11.5, italic=True,
          align=WD_ALIGN_PARAGRAPH.CENTER, space_after=40)
-    para(doc, f"**Author:** {AUTHOR}", 11.5, align=WD_ALIGN_PARAGRAPH.CENTER)
+    para(doc, f"**Team leader:** {LEADER}", 11.5, align=WD_ALIGN_PARAGRAPH.CENTER)
+    others = ", ".join(m["name"] for m in TEAM if m["name"] != LEADER)
+    if others:
+        para(doc, f"**Team members:** {others}", 11.5, align=WD_ALIGN_PARAGRAPH.CENTER)
     para(doc, f"**Date:** {date.today():%d %B %Y}", 11.5, align=WD_ALIGN_PARAGRAPH.CENTER)
     para(doc, f"**Live app:** {LIVE_URL}", 10.5, align=WD_ALIGN_PARAGRAPH.CENTER)
     para(doc, f"**Source code:** {REPO_URL}", 10.5, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=30)
@@ -627,6 +637,11 @@ def build() -> None:
         bullet(doc, item)
     para(doc, f"Live app: {LIVE_URL}", 10)
     para(doc, f"Repository: {REPO_URL}", 10)
+    heading(doc, "Team", 3)
+    has_work = any(m.get("work") for m in TEAM)
+    add_table(doc, ["Member", "Role"] + (["Contribution"] if has_work else []),
+              [[m["name"], m["role"]] + ([m.get("work", "")] if has_work else []) for m in TEAM],
+              widths=[2.4, 1.3, 3.0] if has_work else [3.4, 3.3], font=9.5)
 
     # ---- 2 business problem
     heading(doc, "2. Business problem and objectives", 1)
@@ -721,7 +736,7 @@ def build() -> None:
     heading(doc, "7. SQL analysis (20 queries)", 1)
     para(doc, "The queries answer the three parts of the brief (competitions, venues, rankings). Each block shows the SQL, the number "
               "of rows it returns on the live database and the result screenshot. All 20 are also run by the test suite.", 9.5)
-    from dashboard.queries_loader import load_queries # type: ignore
+    from dashboard.queries_loader import load_queries  # pyright: ignore[reportMissingImports]
     engine = facts.get("engine")
     for qid, title, sql in load_queries(ROOT / "sql" / "queries.sql"):
         n = None
@@ -798,9 +813,13 @@ def build() -> None:
     movement = facts.get("movement")
     if movement:
         match = max(movement["match_up_pct"], movement["match_down_pct"])
-        para(doc, f"**Week-over-week validation:** comparing week {movement['current'][1]} with week {movement['previous'][1]} for "
+        para(doc, f"**Week-over-week validation:** comparing {movement['label']} for "
                   f"{movement['compared']:,} players, the stored movement equals the real rank change for **{match}%** "
-                  f"of them ({movement['convention']}).")
+                  f"of them ({movement['convention']}). Each list is checked on its own newest pair of consecutive weeks, "
+                  f"because ATP and WTA publish on different days.")
+    else:
+        para(doc, "**Week-over-week validation:** not possible yet. `movement` is relative to the previous week, so it can only be "
+                  "checked when a list has two consecutive weeks stored; the check runs automatically as soon as that happens.")
     log = REPORTS / "refresh_log.csv"
     if log.exists():
         with log.open(encoding="utf-8", newline="") as handle:
@@ -808,7 +827,7 @@ def build() -> None:
         if entries:
             heading(doc, "Refresh log", 3)
             add_table(doc, ["Run (UTC)", "Status", "Week", "Week status", "Competitions", "Ranking rows", "Notes"],
-                      [(e["run_at_utc"], e["status"], f"{e['ranking_year']}/{e['ranking_week']}", e["week_status"],
+                      [(e["run_at_utc"], e["status"], (f"{e.get('ranking_year', '')}/{e.get('ranking_week', '')}" if str(e.get('ranking_week', '')).isdigit() else str(e.get('ranking_week', ''))), e["week_status"],
                         e["competitions"], e["ranking_rows"], e["notes"]) for e in entries], font=8)
     else:
         MISSING.append("docs/reports/refresh_log.csv (run python -m api.refresh)")
@@ -830,7 +849,7 @@ def build() -> None:
               "snapshot, and the refresh script compares row counts and rank movement with the previous run, so a change in the data "
               "shows up in the log instead of silently corrupting the analysis.")
     para(doc, "**Monitoring and retraining.** There is no model to retrain. The monitoring plan is the weekly refresh with its checks "
-              "(section 10); the owner is the project author, and the log is the evidence.")
+              "(section 10); the owner is the team leader, and the log is the evidence.")
     para(doc, "**Scalability.** At ten times the data the risks are full table scans and loading too many rows into the browser. Indexes on "
               "every filter and join column, SQL aggregation, pagination and five-minute caching already reduce this; summary tables "
               "would be the next step.")
@@ -936,7 +955,7 @@ def build() -> None:
         "streamlit run app/streamlit_app.py",
         "python docs/build_report.py       # rebuild this report"]))
 
-    doc.save(OUT)
+    doc.save(str(OUT))
     shutil.rmtree(SHOT_TMP, ignore_errors=True)
     print(f"Report saved to {OUT}")
     if MISSING:

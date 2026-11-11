@@ -1,5 +1,7 @@
 """Tennis Rankings Explorer: entry point of the Streamlit dashboard.
 
+Run from the project root:  streamlit run app/streamlit_app.py
+
 The code is split into the `dashboard` package:
     settings.py       constants (names, links, colours, page labels)
     database.py       engines, cached queries, read-only playground runner
@@ -26,7 +28,7 @@ st.set_page_config(page_title="Tennis Rankings Explorer", page_icon="🎾", layo
 
 from dashboard import settings  # noqa: E402
 from dashboard.components import card_grid, card_html, esc, pager  # noqa: E402
-from dashboard.database import latest_period, load_rankings  # noqa: E402
+from dashboard.database import latest_snapshot, load_rankings, snapshot_label  # noqa: E402
 from dashboard.theme import inject_css, render_footer, render_header  # noqa: E402
 from dashboard.views import (competitions, countries, intro, insights, leaderboards,  # noqa: E402
                              overview, players, playground, venues)
@@ -38,8 +40,9 @@ def main() -> None:
     st.session_state.setdefault("nav", settings.PAGES[0])
     label = st.radio("Navigation", settings.PAGES, key="nav", horizontal=True, label_visibility="collapsed")
 
-    period = latest_period()
-    rk = load_rankings(*period) if period else pd.DataFrame()
+    snapshot = latest_snapshot()
+    period = snapshot_label(snapshot) or None
+    rk = load_rankings() if snapshot else pd.DataFrame()
 
     renderers = {
         settings.INTRO: lambda: intro.render(rk, period),

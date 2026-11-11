@@ -54,3 +54,26 @@ def test_log_is_appended_and_failed_runs_are_ignored_when_comparing(tmp_path):
     lines = log.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 3 and lines[0].startswith("run_at_utc,status")
     assert refresh.read_last_log(log)["run_at_utc"] == "t1"
+
+
+def test_summary_keeps_each_lists_own_week():
+    payload = raw()
+    payload["doubles_rankings"]["rankings"] = [
+        {"name": "ATP", "year": 2026, "week": 46, "competitor_rankings": [{"rank": 1}]},
+        {"name": "WTA", "year": 2026, "week": 45, "competitor_rankings": [{"rank": 1}]}]
+    s = refresh.summarise_raw(payload)
+    assert s["lists"] == {"ATP": (2026, 46), "WTA": (2026, 45)}
+    assert refresh.week_label(s["lists"]) == "ATP 46 / WTA 45"
+
+
+def test_week_label_when_lists_agree():
+    assert refresh.week_label({"ATP": (2026, 44), "WTA": (2026, 44)}) == "44"
+    assert refresh.week_label({}) == ""
+
+
+def test_list_classification_is_done_per_list():
+    db = {"ATP": (2026, 45), "WTA": (2026, 45)}
+    assert refresh.classify_lists({"ATP": (2026, 46)}, {}) == "first load"
+    assert refresh.classify_lists({"ATP": (2026, 46), "WTA": (2026, 45)}, db) == "new week"
+    assert refresh.classify_lists({"ATP": (2026, 45), "WTA": (2026, 45)}, db).startswith("same week")
+    assert "OLDER" in refresh.classify_lists({"ATP": (2026, 44), "WTA": (2026, 45)}, db)

@@ -10,7 +10,7 @@ Every check is plain SQL plus a little pandas, so it works on MySQL, MariaDB (Ai
 """
 import argparse
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -175,20 +175,43 @@ def domain_checks(engine) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def latest_period(engine):
+# One row per ranking list at ITS OWN newest week. ATP and WTA publish on different days, so for a few days
+# each week the two lists can be a week apart; using one global "newest week" would silently drop a list.
+CURRENT_JOIN = ("JOIN (SELECT ranking_name, MAX(year * 100 + week) AS latest_yw FROM Competitor_Rankings "
+                "GROUP BY ranking_name) cur ON cur.ranking_name = r.ranking_name AND cur.latest_yw = r.year * 100 + r.week")
+
+
+def latest_periods(engine) -> dict:
+    """{ranking list: (year, week)} with the newest week of each list."""
     with engine.connect() as conn:
-        row = conn.execute(text("SELECT year, week FROM Competitor_Rankings ORDER BY year DESC, week DESC LIMIT 1")).first()
-    return (int(row[0]), int(row[1])) if row else None
+        rows = conn.execute(text("SELECT ranking_name, MAX(year * 100 + week) FROM Competitor_Rankings "
+                                 "GROUP BY ranking_name")).fetchall()
+    return {name: (int(v) // 100, int(v) % 100) for name, v in rows if v is not None}
+
+
+def latest_period(engine):
+    """(year, week) of the single newest week in the table, or None (kept for older code)."""
+    periods = latest_periods(engine)
+    return max(periods.values()) if periods else None
+
+
+def periods_label(periods: dict) -> str:
+    """'year 2026, week 44' when all lists agree, otherwise 'ATP week 46 · WTA week 45'."""
+    if not periods:
+        return ""
+    if len(set(periods.values())) == 1:
+        year, week = next(iter(periods.values()))
+        return f"year {year}, week {week}"
+    return " · ".join(f"{name} week {week}" for name, (year, week) in sorted(periods.items()))
 
 
 def outlier_table(engine) -> pd.DataFrame:
-    """Points and competitions-played spread per ranking list for the latest week (IQR rule)."""
-    period = latest_period(engine)
-    if not period:
-        return pd.DataFrame()
+    """Points and competitions-played spread per ranking list for its newest week (IQR rule)."""
     with engine.connect() as conn:
-        df = pd.read_sql(text("SELECT ranking_name, points, competitions_played FROM Competitor_Rankings "
-                              "WHERE year = :y AND week = :w"), conn, params={"y": period[0], "w": period[1]})
+        df = pd.read_sql(text("SELECT r.ranking_name, r.points, r.competitions_played FROM Competitor_Rankings r "
+                              + CURRENT_JOIN), conn)
+    if df.empty:
+        return pd.DataFrame()
     rows = []
     for name, group in df.groupby("ranking_name"):
         for column in ("points", "competitions_played"):
@@ -200,33 +223,57 @@ def outlier_table(engine) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def movement_validation(engine) -> dict | None:
-    """Compare the stored `movement` with the real change in rank between the two newest weeks.
+def _newest_consecutive_pair(periods: list):
+    """Newest two ISO weeks exactly 7 days apart, as ((year, week), (year, week)), or None."""
+    by_date = {}
+    for year, week in periods:
+        try:
+            by_date[date.fromisocalendar(year, week, 1)] = (year, week)
+        except ValueError:
+            continue
+    for day in sorted(by_date, reverse=True):
+        if day - timedelta(days=7) in by_date:
+            return by_date[day], by_date[day - timedelta(days=7)]
+    return None
 
-    Returns None when fewer than two weeks are stored.
+
+def movement_validation(engine) -> dict | None:
+    """Compare the stored `movement` with the real change in rank between two CONSECUTIVE weeks of the same list.
+
+    Each ranking list is checked on its own, because the lists can be on different weeks. Returns None when no list
+    has two consecutive weeks stored. `movement` is relative to the previous week, so weeks that are not consecutive
+    (for example week 46 after week 44) cannot be compared.
     """
+    sql = ("SELECT competitor_id, `rank` AS rank_value, movement FROM Competitor_Rankings "
+           "WHERE ranking_name = :n AND year = :y AND week = :w")
+    pairs, compared, up_hits, down_hits, new_players, skipped = [], 0, 0, 0, 0, []
     with engine.connect() as conn:
-        periods = conn.execute(text("SELECT DISTINCT year, week FROM Competitor_Rankings "
-                                    "ORDER BY year DESC, week DESC LIMIT 2")).fetchall()
-        if len(periods) < 2:
-            return None
-        (cy, cw), (py, pw) = periods[0], periods[1]
-        sql = ("SELECT competitor_id, ranking_name, `rank` AS rank_value, movement FROM Competitor_Rankings "
-               "WHERE year = :y AND week = :w")
-        cur = pd.read_sql(text(sql), conn, params={"y": int(cy), "w": int(cw)})
-        prev = pd.read_sql(text(sql), conn, params={"y": int(py), "w": int(pw)})
-    merged = cur.merge(prev[["competitor_id", "ranking_name", "rank_value"]], on=["competitor_id", "ranking_name"],
-                       suffixes=("", "_prev"))
-    if merged.empty:
-        return {"current": (int(cy), int(cw)), "previous": (int(py), int(pw)), "compared": 0, "match_up_pct": 0.0,
-                "match_down_pct": 0.0, "new_players": int(len(cur)), "convention": "no overlap"}
-    real_change = merged["rank_value_prev"] - merged["rank_value"]       # positive = moved up the table
-    up = float((merged["movement"] == real_change).mean() * 100)
-    down = float((merged["movement"] == -real_change).mean() * 100)
-    convention = ("positive movement = moved up" if up >= down else "positive movement = moved down")
-    return {"current": (int(cy), int(cw)), "previous": (int(py), int(pw)), "compared": int(len(merged)),
-            "match_up_pct": round(up, 1), "match_down_pct": round(down, 1),
-            "new_players": int(len(cur) - len(merged)), "convention": convention}
+        weeks = pd.read_sql(text("SELECT DISTINCT ranking_name, year, week FROM Competitor_Rankings"), conn)
+        for name, group in weeks.groupby("ranking_name"):
+            pair = _newest_consecutive_pair([(int(r.year), int(r.week)) for r in group.itertuples()])
+            if pair is None:
+                skipped.append(str(name))
+                continue
+            (cy, cw), (py, pw) = pair
+            cur = pd.read_sql(text(sql), conn, params={"n": name, "y": cy, "w": cw})
+            prev = pd.read_sql(text(sql), conn, params={"n": name, "y": py, "w": pw})
+            merged = cur.merge(prev[["competitor_id", "rank_value"]], on="competitor_id", suffixes=("", "_prev"))
+            real_change = merged["rank_value_prev"] - merged["rank_value"]        # positive = moved up the table
+            compared += len(merged)
+            up_hits += int((merged["movement"] == real_change).sum())
+            down_hits += int((merged["movement"] == -real_change).sum())
+            new_players += len(cur) - len(merged)
+            pairs.append({"list": str(name), "current": (cy, cw), "previous": (py, pw), "compared": len(merged)})
+    if not pairs:
+        return None
+    first = pairs[0]
+    up = round(100.0 * up_hits / compared, 1) if compared else 0.0
+    down = round(100.0 * down_hits / compared, 1) if compared else 0.0
+    return {"current": first["current"], "previous": first["previous"], "pairs": pairs, "skipped": skipped,
+            "label": "; ".join(f"{p['list']} week {p['current'][1]} vs {p['previous'][1]}" for p in pairs),
+            "compared": compared, "match_up_pct": up, "match_down_pct": down, "new_players": new_players,
+            "convention": ("no overlap" if not compared else
+                           "positive movement = moved up" if up >= down else "positive movement = moved down")}
 
 
 # ------------------------------------------------------------------- report
@@ -237,12 +284,12 @@ def build_report(engine) -> tuple[str, pd.DataFrame, dict]:
     statuses = pd.concat([integrity["Status"], domain["Status"]])
     summary = {"pass": int((statuses == "PASS").sum()), "warn": int((statuses == "WARN").sum()),
                "info": int((statuses == "INFO").sum())}
-    period = latest_period(engine)
+    periods = latest_periods(engine)
 
     parts = [
         "# Data quality report",
         f"Generated {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC · database `{config.DB_URL.database}` · "
-        f"latest ranking snapshot: {f'year {period[0]}, week {period[1]}' if period else 'none'}",
+        f"latest ranking snapshot: {periods_label(periods) or 'none'}",
         f"**Summary:** {summary['pass']} checks passed, {summary['warn']} warnings, {summary['info']} informational findings.",
         "## 1. Table sizes", md_table(sizes),
         "## 2. Missing values and placeholders",
@@ -256,13 +303,17 @@ def build_report(engine) -> tuple[str, pd.DataFrame, dict]:
         "## 6. Week-over-week validation of `movement`",
     ]
     if movement is None:
-        parts.append("Only one ranking week is stored, so this check is skipped. Run the weekly refresh "
-                     "(`python -m api.refresh`) after the next ranking week appears.")
+        parts.append("No ranking list has two consecutive weeks stored yet, so this check is skipped. Run the weekly "
+                     "refresh (`python -m api.refresh`) after the next ranking week appears.")
     else:
+        pct = max(movement["match_up_pct"], movement["match_down_pct"])
         parts.append(
-            f"Compared week {movement['current']} with week {movement['previous']} for {movement['compared']:,} players "
-            f"present in both ({movement['new_players']:,} new). The stored `movement` equals the real rank change for "
-            f"**{max(movement['match_up_pct'], movement['match_down_pct'])}%** of them, which means: **{movement['convention']}**.")
+            f"Compared {movement['label']} for {movement['compared']:,} players present in both weeks "
+            f"({movement['new_players']:,} new). The stored `movement` equals the real rank change for **{pct}%** of them, "
+            f"which means: **{movement['convention']}**. Each ranking list is checked on its own week, because ATP and WTA "
+            "publish on different days and `movement` is relative to the previous week.")
+        if movement["skipped"]:
+            parts.append("Not checked yet (no two consecutive weeks stored): " + ", ".join(movement["skipped"]) + ".")
     return "\n\n".join(parts) + "\n", placeholders, summary
 
 

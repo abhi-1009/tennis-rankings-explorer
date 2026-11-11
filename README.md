@@ -62,20 +62,14 @@ The app uses a **top navigation bar** (no sidebar), a dark court-themed design, 
 | 🧪 **SQL Playground** | Run your own **read-only** SQL (or any of the 20 project queries), see the table and draw instant charts |
 | 💡 **Insights** | Live-calculated insights, recommendations, limitations, acknowledgements, thank-you |
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/screenshots/readme/01_introduction.png" alt="Introduction page" width="100%"><br><sub><b>Introduction</b>: problem, key result, assumptions</sub></td>
-    <td align="center"><img src="docs/screenshots/readme/02_overview.png" alt="Overview page" width="100%"><br><sub><b>Overview</b>: KPIs and charts with takeaways</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/readme/03_countries.png" alt="Countries page" width="100%"><br><sub><b>Countries</b>: rankings and world map</sub></td>
-    <td align="center"><img src="docs/screenshots/readme/04_leaderboards.png" alt="Leaderboards page" width="100%"><br><sub><b>Leaderboards</b>: top ranked and highest points</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/readme/05_sql_playground.png" alt="SQL Playground" width="100%"><br><sub><b>SQL Playground</b>: read-only SQL with instant charts</sub></td>
-    <td align="center"><img src="docs/screenshots/readme/06_insights.png" alt="Insights page" width="100%"><br><sub><b>Insights</b>: live insights and recommendations</sub></td>
-  </tr>
-</table>
+<!--
+After you add screenshots of the live app to docs/screenshots/ (for example app_overview.png), uncomment this block:
+
+<p align="center">
+  <img src="docs/screenshots/app_overview.png" width="48%">
+  <img src="docs/screenshots/app_playground.png" width="48%">
+</p>
+-->
 
 ---
 
@@ -93,14 +87,16 @@ flowchart LR
 ```
 
 ### 📦 Data at a glance
+Row counts after the refresh of 9 Nov 2026 (they grow slightly with each weekly run).
+
 | Dataset | Rows loaded |
 |---|---|
 | Categories | 18 |
-| Competitions | 6,722 |
-| Complexes | 787 |
-| Venues | 4,161 |
-| Competitors | 1,049 |
-| Competitor rankings | 3,000 |
+| Competitions | 6,728 |
+| Complexes | 788 |
+| Venues | 4,183 |
+| Competitors | 1,071 |
+| Competitor rankings (doubles, all weeks stored) | 4,000 |
 
 ---
 
@@ -162,7 +158,7 @@ All queries live in [`sql/queries.sql`](sql/queries.sql) and their result screen
 | 3.3 | Competitors with no rank movement (stable rank) |
 | 3.4 | Total points of competitors from a country (Croatia) |
 | 3.5 | Number of competitors per country |
-| 3.6 | Competitors with the highest points in the current week |
+| 3.6 | Competitors with the highest points in the current week (per ranking list) |
 
 </details>
 
@@ -210,19 +206,17 @@ Game_Analytics_Tennis/
 │   └── schema_aiven.sql          # cloud version used by init_db.py
 ├── docs/
 │   ├── screenshots/              # ER diagram (.png and .mwb), Aiven counts, 20 query screenshots
-│   ├── App_Screenshots/          # 11 Screenshots captured from live App 
-│   ├── reports/                  # generated: data quality, EXPLAIN report, refresh log, pytest_results
-│   ├── build_report              # Python file for building report
-│   └── Tennis_Project_Report     # Project reported created by python file
+│   ├── reports/                  # generated: data quality, EXPLAIN report, refresh log, pytest result
+│   └── build_report.py           # builds the Word project report from the files above
 ├── sql/
 │   └── queries.sql               # the 20 analysis queries
-├── tests/                        # 99 pytest tests (parsers, SQL guard, API client, refresh, live DB checks)
+├── tests/                        # 106 pytest tests (parsers, SQL guard, API client, refresh, live DB checks)
 ├── .env.example                  # template for your private .env
 ├── .gitignore
 ├── pytest.ini
 ├── README.md
 ├── requirements.txt
-└── requirements-dev.txt          # adds pytest for the tests and python-docx for report
+└── requirements-dev.txt          # adds pytest for the tests
 ```
 
 > 🔒 **Local only, never committed:** `.env` (your real keys and passwords) and `venv/` (your Python environment).
@@ -297,15 +291,18 @@ DB_SSL_CA = "certs/ca.pem"
 | `python -m db.data_quality` | Audits missing values and placeholders (with the reason for each treatment), integrity, duplicates, rank ties, outliers (IQR rule) and week-over-week `movement` | `docs/reports/data_quality_report.md` and `.csv` |
 | `python -m db.explain_report` | Runs `EXPLAIN` and timings for the main queries, with and without each index | `docs/reports/explain_report.md` |
 | `python -m api.refresh` | One-command weekly refresh: download, validate the raw data, load, verify the database, write a log line | `docs/reports/refresh_log.csv` |
-| `pytest` | 73 offline tests plus 26 live-database checks (skipped automatically if the database cannot be reached) | console |
+| `pytest` | 80 offline tests plus 26 live-database checks (skipped automatically if the database cannot be reached) | console |
+| `python docs/build_report.py` | Builds the Word project report (about 16 pages) from the reports, screenshots and database. Add `--full` for the long version (about 40 pages) | `docs/Tennis_Project_Report.docx` |
 
 Install the test tools once with `pip install -r requirements-dev.txt`. Use `pytest -m "not db"` to skip the live checks.
 
 **Monitoring plan.** The data is refreshed weekly with `python -m api.refresh`. Each run stops before touching the database if a download fails or a payload is empty. After loading it checks that:
 - no foreign key is orphaned and no value is impossible (rank below 1, negative points),
 - no table lost more than 20% of its rows compared with the previous run,
-- the ranking week is not older than the one already stored,
-- from the second week onward, the stored `movement` equals the real change in rank.
+- each ranking list (ATP, WTA) is not older than the newest week already stored for that same list,
+- where a list has two consecutive weeks, the stored `movement` equals the real change in rank.
+
+**Why each list is handled separately.** ATP and WTA publish on different days, so one week can briefly hold only ATP rows. The dashboard, the SQL queries and the checks therefore always use the newest week *of each list*, and `movement` (which is relative to the previous week) is only validated between two consecutive weeks of the same list.
 
 The exit code is `0` when healthy, `1` on failure and `2` when it loaded with warnings, so the script can be scheduled (Windows Task Scheduler or cron) and its result inspected in the log.
 
@@ -336,6 +333,7 @@ The exit code is `0` when healthy, `1` on failure and `2` when it loaded with wa
 | Cloud database needs SSL | Added `DB_SSL_CA` support and committed the public CA certificate |
 | Same code on a laptop and on Streamlit Cloud | `config.py` reads `.env` first, then Streamlit Secrets |
 | Re-running the loader must not duplicate data | Upserts plus a unique key on competitor, list, year and week |
+| ATP and WTA are published on different weeks, so one global "latest week" dropped a list and the movement check showed a false 0% | Use the newest week of each list and compare `movement` only across consecutive weeks of the same list |
 
 ---
 
@@ -378,9 +376,16 @@ The exit code is `0` when healthy, `1` on failure and `2` when it loaded with wa
 
 <div align="center">
 
-### 👤 Author
+### 👥 Team
 
-**Abhijit Sinha**
+| Member | Contribution |
+|---|---|
+| **Abhijit Sinha** (team leader) | Introduction, complete Streamlit dashboard, conclusion |
+| **Chanchal Hudda** | Data extraction from the Sportradar API |
+| **Shubham Priyadarshi Nath** | Data cleaning and preparation |
+| **Patel Bhagyashree Arvindkumar** | SQL part: schema, queries and analysis |
+
+Repository owner: Abhijit Sinha
 
 [![GitHub](https://img.shields.io/badge/GitHub-abhi--1009-181717?style=flat&logo=github)](https://github.com/abhi-1009)
 [![Live App](https://img.shields.io/badge/Live_App-Tennis_Rankings_Explorer-FF4B4B?style=flat&logo=streamlit&logoColor=white)](https://tennis-rankings-explorer-stjtrxsnyclfiewespoedo.streamlit.app/)

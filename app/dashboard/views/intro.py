@@ -10,7 +10,7 @@ from dashboard.theme import LOGO_URI
 
 
 def _assumption_cards(rk: pd.DataFrame, period) -> list:
-    snapshot = f"year {period[0]}, week {period[1]}" if period else "the latest week"
+    snapshot = period or "the latest week"
     cat = top_category()
     coverage = (f"{cat[0]} makes up {pct(cat[1], cat[2]):.0f}% of competitions, and counts reflect what the "
                 "Sportradar API covers." if cat else "Counts reflect what the Sportradar API covers.")
@@ -21,7 +21,7 @@ def _assumption_cards(rk: pd.DataFrame, period) -> list:
     return [
         card_html("🎯", "Selection bias", body(f"Only ranked doubles players are included ({len(rk):,} rows).",
                   "unranked and junior players are invisible, so findings describe the ranked elite."), "#c6ff3d"),
-        card_html("📸", "Time window", body(f"One ranking snapshot is shown: {snapshot}.",
+        card_html("📸", "Time window", body(f"The newest week of each ranking list is shown: {snapshot}.",
                   "movement covers one week; long-term trends need more snapshots."), "#22d3ee"),
         card_html("📡", "Coverage bias", body(coverage, "lower-tier events may look more common than they really are."), "#a78bfa"),
         card_html("⚖️", "Not like-for-like", body("ATP and WTA points use different scales.",
@@ -99,6 +99,13 @@ def render(rk: pd.DataFrame, period) -> None:
         ("🧑‍🤝‍🧑", "Competitors", f"{int(scalar('SELECT COUNT(*) FROM Competitors')):,}", "ranked players", "#fb923c"),
         ("🏆", "Ranking rows", f"{int(scalar('SELECT COUNT(*) FROM Competitor_Rankings')):,}", "doubles rankings", "#facc15"),
     ])
+
+    section("Meet the team", "a group project of four")
+    accents = ["#c6ff3d", "#22d3ee", "#a78bfa", "#f472b6"]
+    card_grid([
+        card_html("🧑‍💻", m["name"], f"<b>{esc(m['role'])}</b>" + (f"<br>{esc(m['work'])}" if m["work"] else ""), accents[i % 4])
+        for i, m in enumerate(settings.TEAM)
+    ], 4)
 
     section("How to use this dashboard")
     card_grid([

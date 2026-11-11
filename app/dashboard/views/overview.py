@@ -10,7 +10,7 @@ from dashboard.database import run_query, scalar
 
 
 def render(rk: pd.DataFrame, period) -> None:
-    section("Dashboard overview", f"rankings snapshot: year {period[0]}, week {period[1]}" if period else "")
+    section("Dashboard overview", f"rankings snapshot: {period}" if period else "")
     if not need_data(rk):
         return
     best = rk.loc[rk["points"].idxmax()]
