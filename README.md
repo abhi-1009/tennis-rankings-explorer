@@ -77,13 +77,13 @@ After you add screenshots of the live app to docs/screenshots/ (for example app_
 
 ```mermaid
 flowchart LR
-    A[Sportradar<br/>Tennis API] -->|requests, retries,<br/>rate-limit handling| B[api/extract.py]
-    B --> C[(data/raw<br/>JSON files)]
-    C --> D[api/transform.py<br/>pandas flattening]
-    D --> E[api/load.py<br/>idempotent upserts]
-    E --> F[(Aiven MySQL<br/>tennis_db)]
-    F --> G[Streamlit app<br/>SQLAlchemy + Plotly]
-    G --> H[Streamlit<br/>Community Cloud]
+    A["Sportradar Tennis API"] -->|"requests, retries, rate-limit handling"| B["api/extract.py"]
+    B --> C[("data/raw JSON files")]
+    C --> D["api/transform.py pandas flattening"]
+    D --> E["api/load.py idempotent upserts"]
+    E --> F[("Aiven MySQL tennis_db")]
+    F --> G["Streamlit app SQLAlchemy and Plotly"]
+    G --> H["Streamlit Community Cloud"]
 ```
 
 ### 📦 Data at a glance
